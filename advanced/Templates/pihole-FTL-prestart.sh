@@ -17,5 +17,6 @@ find /etc/pihole/ -type f \( -name '*.pem' -o -name '*.crt' \) -exec chmod 0600 
 
 # Touch files to ensure they exist (create if non-existing, preserve if existing)
 # Hardcoded PID path — see GHSA-6w8x-p785-6pm4
-[ -f /run/pihole-FTL.pid ] || install -D -m 644 -o pihole -g pihole /dev/null /run/pihole-FTL.pid
+# Mode 0640: owner write (FTL) + group read; avoid world-writable signal surface
+[ -f /run/pihole-FTL.pid ] || install -D -m 640 -o pihole -g pihole /dev/null /run/pihole-FTL.pid
 [ -f /etc/pihole/dhcp.leases ] || install -m 644 -o pihole -g pihole /dev/null /etc/pihole/dhcp.leases

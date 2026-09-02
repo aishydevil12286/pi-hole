@@ -759,6 +759,8 @@ gravity_DownloadBlocklistFromUrl() {
   fi
 
   # Check for allowed protocols
+  # Keep FTP family for legacy adlists, but pin curl --proto / --proto-redir below so
+  # redirects cannot reintroduce blocked schemes (residual of GHSA-jg6g-rrj6-xfg6).
   if [[ $url != "http"* && $url != "https"* && $url != "file"* && $url != "ftp"* && $url != "ftps"* && $url != "sftp"* ]]; then
     echo -e "${OVER}  ${CROSS} ${str} Invalid protocol specified. Ignoring list."
     echo -e "      Ensure your URL starts with a valid protocol like http:// , https:// or file:// ."
@@ -795,7 +797,13 @@ gravity_DownloadBlocklistFromUrl() {
     # this, we use the "--fail" option to force curl to return a non-zero exit code.
     # If curl version is older than 7.75.0, curl can't generate the errormsg output. In this case,
     # a generic message is returned.
-    curlOutput=$(curl --connect-timeout ${curl_connect_timeout} -s --fail -L ${compression:+${compression}} ${customUpstreamResolver:+${customUpstreamResolver}} "${modifiedOptions[@]}" -w "${curlOutputFormat}" "${url}" -o "${listCurlBuffer}")
+    #
+    # --proto pins the initial request to the gravity allowlist.
+    # --proto-redir blocks scheme escalation on -L redirects (e.g. https → gopher on old curl).
+    curlOutput=$(curl --connect-timeout ${curl_connect_timeout} -s --fail -L \
+      --proto '=http,https,file,ftp,ftps,sftp' --proto-redir '=http,https' \
+      ${compression:+${compression}} ${customUpstreamResolver:+${customUpstreamResolver}} \
+      "${modifiedOptions[@]}" -w "${curlOutputFormat}" "${url}" -o "${listCurlBuffer}")
     curlExitCode="$?"
 
 

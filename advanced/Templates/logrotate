@@ -8,7 +8,14 @@
     notifempty
     nomail
     postrotate
-        kill -USR2 $(cat /run/pihole-FTL.pid 2>/dev/null) 2>/dev/null || true
+        # Only signal a strictly numeric PID. The PID file is pihole-owned and
+        # writable; unquoted $(cat ...) previously allowed signal injection as root.
+        # See getFTLPID() in utils.sh / GHSA-6w8x-p785-6pm4 follow-up.
+        pid="$(cat /run/pihole-FTL.pid 2>/dev/null)" || true
+        case "${pid}" in
+            ''|*[!0-9]*) ;;
+            *) kill -USR2 -- "${pid}" 2>/dev/null || true ;;
+        esac
     endscript
 }
 

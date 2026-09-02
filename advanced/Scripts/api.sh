@@ -184,7 +184,12 @@ LoginAPI() {
 }
 
 Authentication() {
-    sessionResponse="$(curl --connect-timeout 2 -skS -X POST "${API_URL}auth" --user-agent "Pi-hole cli" --data "{\"password\":\"${password}\", \"totp\":${totp:-null}}" )"
+    # Build JSON with jq so passwords containing quotes/backslashes cannot break
+    # or inject fields into the auth request body.
+    authPayload="$(jq -nc --arg password "${password}" --arg totp "${totp-}" \
+        'if ($totp | length) == 0 then {password: $password, totp: null}
+         else {password: $password, totp: ($totp | tonumber)} end')"
+    sessionResponse="$(curl --connect-timeout 2 -skS -X POST "${API_URL}auth" --user-agent "Pi-hole cli" --data "${authPayload}" )"
 
     if [ -z "${sessionResponse}" ]; then
         echo "No response from FTL server. Please check connectivity"

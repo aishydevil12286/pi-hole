@@ -334,47 +334,38 @@ build_dependency_package(){
     # Create a fresh build directory with random name
     # Busybox Compat: `mktemp` long flags unsupported
     #   -d flag is short form of --directory
+    # Keep the built .deb/.rpm inside this directory (not a predictable /tmp/pihole-meta.deb
+    # path) to avoid local TOCTOU replacement before root dpkg/rpm install.
     local tempdir
     tempdir="$(mktemp -d /tmp/pihole-meta_XXXXX)"
-    chmod 0755 "${tempdir}"
+    chmod 0700 "${tempdir}"
 
     if is_command apt-get; then
-        # move into the tmp directory
-        pushd /tmp &>/dev/null || return 1
-
-        # remove leftover package if it exists from previous runs
-        rm -f /tmp/pihole-meta.deb
-
-        # Prepare directory structure and control file
-        mkdir -p "${tempdir}"/DEBIAN
-        chmod 0755 "${tempdir}"/DEBIAN
-        touch "${tempdir}"/DEBIAN/control
+        # Stage package contents in a subdirectory so the output .deb is not
+        # written into the tree being packaged.
+        local stagedir="${tempdir}/pkg"
+        mkdir -p "${stagedir}/DEBIAN"
+        chmod 0755 "${stagedir}/DEBIAN"
+        touch "${stagedir}/DEBIAN/control"
 
         # Write the control file
-        echo "${PIHOLE_META_PACKAGE_CONTROL_APT}" > "${tempdir}"/DEBIAN/control
+        echo "${PIHOLE_META_PACKAGE_CONTROL_APT}" > "${stagedir}/DEBIAN/control"
 
-        # Build the package
+        # Build the package into the private tempdir (path exported for install step)
+        PIHOLE_META_PACKAGE="${tempdir}/pihole-meta.deb"
         local str="Building dependency package pihole-meta.deb"
         printf "  %b %s..." "${INFO}" "${str}"
 
-        if dpkg-deb --build --root-owner-group "${tempdir}" pihole-meta.deb  &>/dev/null; then
+        if dpkg-deb --build --root-owner-group "${stagedir}" "${PIHOLE_META_PACKAGE}" &>/dev/null; then
             printf "%b  %b %s\\n" "${OVER}" "${TICK}" "${str}"
         else
             printf "%b  %b %s\\n" "${OVER}" "${CROSS}" "${str}"
             printf "%b Error: Building pihole-meta.deb failed. %b\\n" "${COL_RED}" "${COL_NC}"
+            rm -rf "${tempdir}"
             return 1
         fi
 
-        # Move back into the directory the user started in
-        popd &> /dev/null || return 1
-
     elif is_command rpm; then
-        # move into the tmp directory
-        pushd /tmp &>/dev/null || return 1
-
-        # remove leftover package if it exists from previous runs
-        rm -f /tmp/pihole-meta.rpm
-
         # Prepare directory structure and spec file
         mkdir -p "${tempdir}"/SPECS
         touch "${tempdir}"/SPECS/pihole-meta.spec
@@ -395,19 +386,18 @@ build_dependency_package(){
         else
             printf "%b  %b %s\\n" "${OVER}" "${CROSS}" "${str}"
             printf "%b Error: Building pihole-meta.rpm failed. %b\\n" "${COL_RED}" "${COL_NC}"
+            rm -rf "${tempdir}"
             return 1
         fi
 
-        # Move the package to the /tmp directory
-        mv "${tempdir}"/RPMS/noarch/pihole-meta*.rpm /tmp/pihole-meta.rpm
+        # Keep the package inside the private tempdir (not a fixed /tmp path)
+        PIHOLE_META_PACKAGE="${tempdir}/pihole-meta.rpm"
+        mv "${tempdir}"/RPMS/noarch/pihole-meta*.rpm "${PIHOLE_META_PACKAGE}"
 
         # Remove the build dependencies when we've installed them
         if [ -n "${REMOVE_RPM_BUILD}" ]; then
             eval "${PKG_REMOVE}" "rpm-build"
         fi
-
-        # Move back into the directory the user started in
-        popd &> /dev/null || return 1
 
     # If neither apt-get or yum/dnf package managers were found
     else
@@ -417,8 +407,8 @@ build_dependency_package(){
         exit 1
     fi
 
-    # Remove the build directory
-    rm -rf "${tempdir}"
+    # Leave ${tempdir} (and PIHOLE_META_PACKAGE inside it) for install_dependent_packages;
+    # that function removes the directory after a successful install.
 }
 
 # A function for checking if a directory is a git repository
@@ -1449,27 +1439,14 @@ install_dependent_packages() {
     local str="Installing Pi-hole dependency package"
     printf "  %b %s..." "${INFO}" "${str}"
 
-    # Install Debian/Ubuntu packages
-    if is_command apt-get; then
-        if [ -f /tmp/pihole-meta.deb ]; then
-            if eval "${PKG_INSTALL}" "/tmp/pihole-meta.deb" &>/dev/null; then
+    # Install Debian/Ubuntu or Fedora/CentOS packages from the private build path
+    if is_command apt-get || is_command rpm; then
+        if [ -n "${PIHOLE_META_PACKAGE:-}" ] && [ -f "${PIHOLE_META_PACKAGE}" ]; then
+            if eval "${PKG_INSTALL}" "${PIHOLE_META_PACKAGE}" &>/dev/null; then
                 printf "%b  %b %s\\n" "${OVER}" "${TICK}" "${str}"
-                rm /tmp/pihole-meta.deb
-            else
-                printf "%b  %b %s\\n" "${OVER}" "${CROSS}" "${str}"
-                printf "  %b Error: Unable to install Pi-hole dependency package.\\n" "${COL_RED}"
-                return 1
-            fi
-        else
-            printf "  %b Error: Unable to find Pi-hole dependency package.\\n" "${COL_RED}"
-            return 1
-        fi
-    # Install Fedora/CentOS packages
-    elif is_command rpm; then
-        if [ -f /tmp/pihole-meta.rpm ]; then
-            if eval "${PKG_INSTALL}" "/tmp/pihole-meta.rpm" &>/dev/null; then
-                printf "%b  %b %s\\n" "${OVER}" "${TICK}" "${str}"
-                rm /tmp/pihole-meta.rpm
+                # Remove the entire private build directory (package + staging tree)
+                rm -rf "${PIHOLE_META_PACKAGE%/*}"
+                unset PIHOLE_META_PACKAGE
             else
                 printf "%b  %b %s\\n" "${OVER}" "${CROSS}" "${str}"
                 printf "  %b Error: Unable to install Pi-hole dependency package.\\n" "${COL_RED}"
