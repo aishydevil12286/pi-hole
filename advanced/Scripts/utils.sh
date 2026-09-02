@@ -100,9 +100,12 @@ getFTLPID() {
     if [ -s "${FTL_PID_FILE}" ]; then
         # -s: FILE exists and has a size greater than zero
         FTL_PID="$(cat "${FTL_PID_FILE}")"
-        # Exploit prevention: unset the variable if there is malicious content
-        # Verify that the value read from the file is numeric
-        expr "${FTL_PID}" : "[^[:digit:]]" > /dev/null && unset FTL_PID
+        # Exploit prevention: require the entire value to be digits only.
+        # A leading-digit-only check (expr … : [^[:digit:]]) previously accepted
+        # values like "123 -KILL 1", which is unsafe when passed to kill(1).
+        case "${FTL_PID}" in
+            ''|*[!0-9]*) unset FTL_PID ;;
+        esac
     fi
 
     # If FTL is not running, or the PID file contains malicious stuff, substitute

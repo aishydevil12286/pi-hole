@@ -41,6 +41,29 @@ teardown() {
     assert_output "-1"
 }
 
+@test "getFTLPID rejects non-numeric and injected PID content" {
+    run bash -c '
+        source /opt/pihole/utils.sh
+        printf "%s\n" "123 -KILL 1" > /run/pihole-FTL.pid
+        getFTLPID
+    '
+    assert_output "-1"
+
+    run bash -c '
+        source /opt/pihole/utils.sh
+        printf "%s\n" "12a" > /run/pihole-FTL.pid
+        getFTLPID
+    '
+    assert_output "-1"
+
+    run bash -c '
+        source /opt/pihole/utils.sh
+        printf "%s\n" "4242" > /run/pihole-FTL.pid
+        getFTLPID
+    '
+    assert_output "4242"
+}
+
 @test "setFTLConfigValue and getFTLConfigValue round-trip" {
     # FTL must be installed for this test
     bash -c "
