@@ -104,10 +104,6 @@ PIHOLE_INTERFACE=
 # Where old configs go to if a v6 migration is performed
 V6_CONF_MIGRATION_DIR="/etc/pihole/migration_backup_v6"
 
-if [ -z "${USER}" ]; then
-    USER="$(id -un)"
-fi
-
 # dialog dimensions: Let dialog handle appropriate sizing.
 r=20
 c=70
@@ -1209,17 +1205,24 @@ installScripts() {
         # move into the directory
         cd "${PI_HOLE_LOCAL_REPO}"
         # Install the scripts by:
-        #  -o setting the owner to the user
+        #  -o setting the owner to root. This install step only ever runs as
+        #     root (enforced by the EUID check in main()), so the owner is
+        #     hardcoded rather than taken from the $USER environment variable:
+        #     $USER is not guaranteed to reflect the actual root identity (it
+        #     can survive a sudo/su invocation unchanged, e.g. under
+        #     `sudo -E` or a customized sudoers env_keep), and trusting it
+        #     here would let these root-executed scripts end up owned by an
+        #     unprivileged account.
         #  -Dm755 create all leading components of destination except the last, then copy the source to the destination and setting the permissions to 755
         #
         # This first one is the directory
-        install -o "${USER}" -Dm755 -d "${PI_HOLE_INSTALL_DIR}"
+        install -o root -Dm755 -d "${PI_HOLE_INSTALL_DIR}"
         # The rest are the scripts Pi-hole needs
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" gravity.sh
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/*.sh
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./automated\ install/uninstall.sh
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/COL_TABLE
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_BIN_DIR}" pihole
+        install -o root -Dm755 -t "${PI_HOLE_INSTALL_DIR}" gravity.sh
+        install -o root -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/*.sh
+        install -o root -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./automated\ install/uninstall.sh
+        install -o root -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/COL_TABLE
+        install -o root -Dm755 -t "${PI_HOLE_BIN_DIR}" pihole
         install -Dm644 ./advanced/bash-completion/pihole.bash /etc/bash_completion.d/pihole
         install -Dm644 ./advanced/bash-completion/pihole-ftl.bash /etc/bash_completion.d/pihole-FTL
         printf "%b  %b %s\\n" "${OVER}" "${TICK}" "${str}"

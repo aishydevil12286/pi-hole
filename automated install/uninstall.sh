@@ -35,13 +35,27 @@ fi
 
 # Get paths for admin interface, log files and database files,
 # to allow deletion where user has specified a non-default location
+#
+# validate_ftl_path() (utils.sh) restricts each FTL-config-supplied path to
+# the expected Pi-hole directory before it is used in these root-level
+# rm/rm -rf calls below, and falls back to empty (letting the default in
+# each ${VAR:-default} usage take over) if it doesn't. Without this, a
+# config value pointing outside those directories -- reachable by any
+# authenticated API user with config-write access, not just someone with
+# shell/root access -- would let uninstall.sh delete an arbitrary
+# root-owned file or directory.
+FTL_LOG=$(validate_ftl_path "$(getFTLConfigValue "files.log.ftl")" "/var/log/pihole/")
+DNSMASQ_LOG=$(validate_ftl_path "$(getFTLConfigValue "files.log.dnsmasq")" "/var/log/pihole/")
+WEBSERVER_LOG=$(validate_ftl_path "$(getFTLConfigValue "files.log.webserver")" "/var/log/pihole/")
+PIHOLE_DB=$(validate_ftl_path "$(getFTLConfigValue "files.database")" "/etc/pihole/")
+GRAVITY_DB=$(validate_ftl_path "$(getFTLConfigValue "files.gravity")" "/etc/pihole/")
+MACVENDOR_DB=$(validate_ftl_path "$(getFTLConfigValue "files.macvendor")" "/etc/pihole/")
+
+# ADMIN_INTERFACE_DIR is a webroot+webhome path, not a files.* path, so it
+# is not validated by validate_ftl_path (which is scoped to /etc/pihole and
+# /var/log/pihole); it keeps its existing default fallback in
+# removeWebInterface() below.
 ADMIN_INTERFACE_DIR=$(getFTLConfigValue "webserver.paths.webroot")$(getFTLConfigValue "webserver.paths.webhome")
-FTL_LOG=$(getFTLConfigValue "files.log.ftl")
-DNSMASQ_LOG=$(getFTLConfigValue "files.log.dnsmasq")
-WEBSERVER_LOG=$(getFTLConfigValue "files.log.webserver")
-PIHOLE_DB=$(getFTLConfigValue "files.database")
-GRAVITY_DB=$(getFTLConfigValue "files.gravity")
-MACVENDOR_DB=$(getFTLConfigValue "files.macvendor")
 
 PI_HOLE_LOCAL_REPO="/etc/.pihole"
 # Setting SKIP_INSTALL="true" to source the installer functions without running them

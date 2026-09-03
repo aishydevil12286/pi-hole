@@ -23,21 +23,24 @@ source "${utilsfile}"
 STATEFILE="/var/lib/logrotate/pihole"
 
 # Determine database location
-DBFILE=$(getFTLConfigValue "files.database")
+# validate_ftl_path() (utils.sh) restricts the FTL-config-supplied path to
+# the expected Pi-hole directory before it is used, and falls through to
+# the hardcoded default if it doesn't (see utils.sh for why this matters).
+DBFILE=$(validate_ftl_path "$(getFTLConfigValue "files.database")" "/etc/pihole/")
 if [ -z "$DBFILE" ]; then
     DBFILE="/etc/pihole/pihole-FTL.db"
 fi
 
 # Determine log file location
-LOGFILE=$(getFTLConfigValue "files.log.dnsmasq")
+LOGFILE=$(validate_ftl_path "$(getFTLConfigValue "files.log.dnsmasq")" "/var/log/pihole/")
 if [ -z "$LOGFILE" ]; then
     LOGFILE="/var/log/pihole/pihole.log"
 fi
-FTLFILE=$(getFTLConfigValue "files.log.ftl")
+FTLFILE=$(validate_ftl_path "$(getFTLConfigValue "files.log.ftl")" "/var/log/pihole/")
 if [ -z "$FTLFILE" ]; then
     FTLFILE="/var/log/pihole/FTL.log"
 fi
-WEBFILE=$(getFTLConfigValue "files.log.webserver")
+WEBFILE=$(validate_ftl_path "$(getFTLConfigValue "files.log.webserver")" "/var/log/pihole/")
 if [ -z "$WEBFILE" ]; then
     WEBFILE="/var/log/pihole/webserver.log"
 fi

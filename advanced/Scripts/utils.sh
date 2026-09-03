@@ -30,6 +30,20 @@ addOrEditKeyValPair() {
   local key="${2}"
   local value="${3}"
 
+  # ${value} is interpolated directly into a sed "c\" replacement script below.
+  # Callers such as updatecheck.sh pass values sourced from a GitHub API
+  # response (release tag_name); a value containing a literal newline could
+  # inject additional sed commands, including GNU sed's "e" command, which
+  # executes an arbitrary shell command. Reject anything outside the set of
+  # characters actually needed for version strings, branch names, and commit
+  # hashes rather than trying to escape it for sed.
+  case "${value}" in
+    *[!a-zA-Z0-9._/+\-]*)
+      echo "addOrEditKeyValPair: refusing to write unsafe value for key '${key}'" >&2
+      return 1
+      ;;
+  esac
+
   if grep -q "^${key}=" "${file}"; then
     # Key already exists in file, modify the value
     sed -i "/^${key}=/c\\${key}=${value}" "${file}"
@@ -124,6 +138,49 @@ getFTLConfigValue(){
   # Pipe to cat to avoid pihole-FTL assuming this is an interactive command
   # returning colored output.
   pihole-FTL --config -q "${1}" | cat
+}
+
+#######################
+# Validates a path read from FTL's config before it is used in a
+# destructive, root-privileged operation (log flush, uninstall cleanup).
+#
+# FTL's config file can be modified by any authenticated API user with
+# config-write access, not just someone with shell/root access. Scripts
+# such as piholeLogFlush.sh and uninstall.sh run as root (via cron or a
+# manual root invocation) and truncate/delete whatever path the config
+# reports for files.log.* / files.database / files.gravity /
+# files.macvendor. Without this check, a config value pointing outside
+# the expected Pi-hole directories would let a lower-privileged API
+# caller turn a root-owned maintenance script into an arbitrary-file
+# delete/truncate primitive.
+#
+# Takes two arguments: the path to validate, and the required directory
+# prefix it must resolve inside of. Prints the validated path on stdout
+# if it resolves inside that prefix, otherwise prints nothing (callers
+# should fall back to their own hardcoded default).
+#
+# Example: validate_ftl_path "${DBFILE}" "/etc/pihole/"
+#######################
+validate_ftl_path(){
+  local path="${1}"
+  local prefix="${2}"
+  local resolved
+
+  if [ -z "${path}" ]; then
+    return 1
+  fi
+
+  # Resolve to an absolute, symlink-free path so a relative path or a
+  # symlink cannot be used to escape the required prefix directory.
+  resolved="$(readlink -f -- "${path}" 2>/dev/null)"
+  if [ -z "${resolved}" ]; then
+    return 1
+  fi
+
+  case "${resolved}" in
+    "${prefix}"*) printf '%s' "${resolved}"; return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 #######################

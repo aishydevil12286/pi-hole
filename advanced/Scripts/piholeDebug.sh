@@ -846,8 +846,17 @@ parse_file() {
         if [[ -n "${file_lines}" ]]; then
             # skip empty and comment lines line
             [[ "${file_lines}" =~ ^[[:space:]]*\#.*$  || ! "${file_lines}" ]] && continue
-            # remove the password hash from the output (*"pwhash = "*)
+            # remove secret values from the output before they are written to the debug log
+            # (which users are asked to upload to a public pastebin/tricorder service).
+            # This covers *"pwhash = "* (matches both webserver.api.pwhash and
+            # webserver.api.app_pwhash, since the latter also ends in "pwhash = ")
+            # and *"totp_secret = "* (webserver.api.totp_secret): unlike the CLI/API,
+            # which hides write-only fields like totp_secret behind a placeholder,
+            # this function reads the raw config file, which stores the actual TOTP
+            # secret in plaintext -- leaking it would let anyone with the debug log
+            # generate valid 2FA codes and fully bypass 2FA.
             [[ "${file_lines}" == *"pwhash ="* ]] && file_lines=$(echo "${file_lines}" | sed -e 's/\(pwhash = \).*/\1<removed>/')
+            [[ "${file_lines}" == *"totp_secret ="* ]] && file_lines=$(echo "${file_lines}" | sed -e 's/\(totp_secret = \).*/\1<removed>/')
             # otherwise, display the lines of the file
             log_write "    ${file_lines}"
         fi
